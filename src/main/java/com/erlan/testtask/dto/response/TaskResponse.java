@@ -6,22 +6,18 @@ import java.io.Serializable;
 import java.time.Instant;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
-import lombok.NoArgsConstructor;
-import lombok.Setter;
 
 @Getter
-@Setter
-@NoArgsConstructor
 @AllArgsConstructor
 public class TaskResponse implements Serializable {
 
     @Serial
     private static final long serialVersionUID = 1L;
 
-    private Long id;
-    private String title;
-    private String description;
-    private TaskStatus status;
-    private Instant createdAt;
-    private Instant updatedAt;
+    private final Long id;
+    private final String title;
+    private final String description;
+    private final TaskStatus status;
+    private final Instant createdAt;
+    private final Instant updatedAt;
 }

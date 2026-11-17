@@ -2,23 +2,25 @@ package com.erlan.testtask.service.impl;
 
 import com.erlan.testtask.event.TaskCreatedEvent;
 import com.erlan.testtask.service.EmailService;
-import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.stereotype.Service;
 
 @Service
-@RequiredArgsConstructor
 public class EmailServiceImpl implements EmailService {
 
     private final JavaMailSender mailSender;
+    private final String from;
+    private final String to;
 
-    @Value("${app.mail.from}")
-    private String from;
-
-    @Value("${app.mail.to}")
-    private String to;
+    public EmailServiceImpl(JavaMailSender mailSender,
+            @Value("${app.mail.from}") String from,
+            @Value("${app.mail.to}") String to) {
+        this.mailSender = mailSender;
+        this.from = from;
+        this.to = to;
+    }
 
     @Override
     public void sendTaskCreatedEmail(TaskCreatedEvent event) {

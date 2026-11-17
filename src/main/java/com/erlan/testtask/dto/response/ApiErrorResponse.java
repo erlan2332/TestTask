@@ -3,18 +3,14 @@ package com.erlan.testtask.dto.response;
 import java.time.Instant;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
-import lombok.NoArgsConstructor;
-import lombok.Setter;
 
 @Getter
-@Setter
-@NoArgsConstructor
 @AllArgsConstructor
 public class ApiErrorResponse {
 
-    private Instant timestamp;
-    private int status;
-    private String error;
-    private String message;
-    private String path;
+    private final Instant timestamp;
+    private final int status;
+    private final String error;
+    private final String message;
+    private final String path;
 }

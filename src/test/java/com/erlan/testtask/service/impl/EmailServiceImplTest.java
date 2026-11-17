@@ -14,7 +14,6 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
-import org.springframework.test.util.ReflectionTestUtils;
 
 @ExtendWith(MockitoExtension.class)
 class EmailServiceImplTest {
@@ -26,9 +25,7 @@ class EmailServiceImplTest {
 
     @BeforeEach
     void setUp() {
-        service = new EmailServiceImpl(mailSender);
-        ReflectionTestUtils.setField(service, "from", "sender@example.test");
-        ReflectionTestUtils.setField(service, "to", "recipient@example.test");
+        service = new EmailServiceImpl(mailSender, "sender@example.test", "recipient@example.test");
     }
 
     @Test
