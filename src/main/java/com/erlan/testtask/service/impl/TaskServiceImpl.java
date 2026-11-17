@@ -5,6 +5,7 @@ import com.erlan.testtask.dto.request.CreateTaskRequest;
 import com.erlan.testtask.dto.request.UpdateTaskRequest;
 import com.erlan.testtask.dto.response.TaskResponse;
 import com.erlan.testtask.entity.Task;
+import com.erlan.testtask.event.TaskCreatedEvent;
 import com.erlan.testtask.exception.TaskNotFoundException;
 import com.erlan.testtask.mapper.TaskMapper;
 import com.erlan.testtask.repository.TaskRepository;
@@ -13,6 +14,7 @@ import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.Cacheable;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -22,13 +24,19 @@ public class TaskServiceImpl implements TaskService {
 
     private final TaskRepository repository;
     private final TaskMapper mapper;
+    private final ApplicationEventPublisher eventPublisher;
 
     @Override
     @Transactional
     @CacheEvict(cacheNames = CacheConfig.TASKS_CACHE, allEntries = true)
     public TaskResponse createTask(CreateTaskRequest request) {
         Task task = mapper.toEntity(request);
-        return mapper.toDto(repository.saveAndFlush(task));
+        Task saved = repository.saveAndFlush(task);
+        TaskResponse response = mapper.toDto(saved);
+        eventPublisher.publishEvent(new TaskCreatedEvent(
+                saved.getId(), saved.getTitle(), saved.getDescription(),
+                saved.getStatus(), saved.getCreatedAt()));
+        return response;
     }
 
     @Override

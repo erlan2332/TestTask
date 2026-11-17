@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -12,6 +13,7 @@ import com.erlan.testtask.dto.request.UpdateTaskRequest;
 import com.erlan.testtask.dto.response.TaskResponse;
 import com.erlan.testtask.entity.Task;
 import com.erlan.testtask.enums.TaskStatus;
+import com.erlan.testtask.event.TaskCreatedEvent;
 import com.erlan.testtask.exception.TaskNotFoundException;
 import com.erlan.testtask.mapper.TaskMapper;
 import com.erlan.testtask.repository.TaskRepository;
@@ -24,6 +26,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.test.util.ReflectionTestUtils;
 
 @ExtendWith(MockitoExtension.class)
@@ -32,11 +35,14 @@ class TaskServiceImplTest {
     @Mock
     private TaskRepository repository;
 
+    @Mock
+    private ApplicationEventPublisher eventPublisher;
+
     private TaskServiceImpl service;
 
     @BeforeEach
     void setUp() {
-        service = new TaskServiceImpl(repository, new TaskMapper());
+        service = new TaskServiceImpl(repository, new TaskMapper(), eventPublisher);
     }
 
     @Test
@@ -46,6 +52,7 @@ class TaskServiceImplTest {
         when(repository.saveAndFlush(any(Task.class))).thenAnswer(invocation -> {
             Task task = invocation.getArgument(0);
             ReflectionTestUtils.setField(task, "id", 7L);
+            ReflectionTestUtils.setField(task, "createdAt", Instant.parse("2026-01-01T00:00:00Z"));
             return task;
         });
 
@@ -61,6 +68,14 @@ class TaskServiceImplTest {
         assertThat(response.getId()).isEqualTo(7L);
         assertThat(response.getTitle()).isEqualTo("Write tests");
         assertThat(response.getStatus()).isEqualTo(TaskStatus.IN_PROGRESS);
+        ArgumentCaptor<TaskCreatedEvent> eventCaptor = ArgumentCaptor.forClass(TaskCreatedEvent.class);
+        verify(eventPublisher).publishEvent(eventCaptor.capture());
+        TaskCreatedEvent event = eventCaptor.getValue();
+        assertThat(event.getId()).isEqualTo(7L);
+        assertThat(event.getTitle()).isEqualTo("Write tests");
+        assertThat(event.getDescription()).isEqualTo("CRUD tests");
+        assertThat(event.getStatus()).isEqualTo(TaskStatus.IN_PROGRESS);
+        assertThat(event.getCreatedAt()).isEqualTo(Instant.parse("2026-01-01T00:00:00Z"));
     }
 
     @Test
@@ -161,6 +176,7 @@ class TaskServiceImplTest {
         assertThat(response.getTitle()).isEqualTo("New");
         assertThat(response.getDescription()).isNull();
         assertThat(response.getStatus()).isEqualTo(TaskStatus.DONE);
+        verifyNoInteractions(eventPublisher);
     }
 
     @Test
@@ -189,6 +205,7 @@ class TaskServiceImplTest {
         // Then
         verify(repository).findById(6L);
         verify(repository).delete(existing);
+        verifyNoInteractions(eventPublisher);
     }
 
     @Test

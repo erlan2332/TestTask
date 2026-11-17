@@ -2,6 +2,17 @@ server:
   port: 8080
 
 spring:
+  mail:
+    host: ${MAIL_HOST:localhost}
+    port: ${MAIL_PORT:1025}
+    username: ${MAIL_USERNAME:}
+    password: ${MAIL_PASSWORD:}
+    properties:
+      mail.smtp.auth: ${MAIL_SMTP_AUTH:false}
+      mail.smtp.starttls.enable: ${MAIL_SMTP_STARTTLS:false}
+      mail.smtp.connectiontimeout: 3000
+      mail.smtp.timeout: 5000
+      mail.smtp.writetimeout: 5000
   data:
     redis:
       host: ${REDIS_HOST:localhost}
@@ -29,6 +40,10 @@ external:
     url: https://api.restful-api.dev/objects
 
 app:
+  mail:
+    enabled: ${APP_MAIL_ENABLED:false}
+    from: ${APP_MAIL_FROM:noreply@example.test}
+    to: ${APP_MAIL_TO:recipient@example.test}
   security:
     username: ${APP_SECURITY_USERNAME:}
     password: ${APP_SECURITY_PASSWORD:}
