@@ -7,6 +7,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.erlan.testtask.exception.ExternalServiceException;
+import com.erlan.testtask.config.SecurityConfig;
 import com.erlan.testtask.exception.GlobalExceptionHandler;
 import com.erlan.testtask.logging.HttpLoggingFilter;
 import com.erlan.testtask.service.ExternalApiService;
@@ -19,12 +20,14 @@ import org.springframework.boot.test.system.CapturedOutput;
 import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
+import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 @WebMvcTest(ExternalApiController.class)
-@Import({GlobalExceptionHandler.class, HttpLoggingFilter.class})
+@Import({GlobalExceptionHandler.class, HttpLoggingFilter.class, SecurityConfig.class})
 @ExtendWith(OutputCaptureExtension.class)
+@WithMockUser(username = "test-user")
 class ExternalApiControllerTest {
 
     @Autowired

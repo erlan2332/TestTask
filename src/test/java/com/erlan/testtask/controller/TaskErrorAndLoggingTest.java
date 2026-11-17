@@ -8,8 +8,10 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.httpBasic;
 
 import com.erlan.testtask.dto.response.TaskResponse;
+import com.erlan.testtask.config.SecurityConfig;
 import com.erlan.testtask.enums.TaskStatus;
 import com.erlan.testtask.exception.GlobalExceptionHandler;
 import com.erlan.testtask.exception.TaskNotFoundException;
@@ -18,6 +20,8 @@ import com.erlan.testtask.service.TaskService;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.Instant;
+import java.nio.charset.StandardCharsets;
+import java.util.Base64;
 import java.util.stream.IntStream;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -26,14 +30,16 @@ import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.system.CapturedOutput;
 import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.http.MediaType;
+import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.context.annotation.Import;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 
 @WebMvcTest(TaskController.class)
-@Import({GlobalExceptionHandler.class, HttpLoggingFilter.class})
+@Import({GlobalExceptionHandler.class, HttpLoggingFilter.class, SecurityConfig.class})
 @ExtendWith(OutputCaptureExtension.class)
+@WithMockUser(username = "test-user")
 class TaskErrorAndLoggingTest {
 
     @Autowired
@@ -129,7 +135,7 @@ class TaskErrorAndLoggingTest {
 
         MvcResult result = mockMvc.perform(post("/api/tasks?access_token=query-secret-123")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .header("Authorization", "Basic auth-secret-123")
+                        .with(httpBasic("test-user", "test-password"))
                         .header("Cookie", "session=cookie-secret-123")
                         .content(body))
                 .andExpect(status().isCreated()).andReturn();
@@ -142,7 +148,9 @@ class TaskErrorAndLoggingTest {
         assertThat(logs).contains("HTTP REQUEST | POST /api/tasks | body=");
         assertThat(logs).contains("HTTP RESPONSE | POST /api/tasks | status=201 | durationMs=");
         assertThat(logs).contains("\"status\":\"TODO\"", "\"id\":1", "[REDACTED]");
-        assertThat(logs).doesNotContain(title, "private title", "pw-123", "key-123", "auth-secret-123",
+        String encodedCredentials = Base64.getEncoder().encodeToString(
+                "test-user:test-password".getBytes(StandardCharsets.UTF_8));
+        assertThat(logs).doesNotContain(title, "private title", "pw-123", "key-123", encodedCredentials,
                 "cookie-secret-123", "query-secret-123", "password", "apiKey");
     }
 
