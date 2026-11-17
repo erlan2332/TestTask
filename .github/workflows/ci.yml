@@ -36,3 +36,16 @@ jobs:
         env:
           RUN_REDIS_TESTS: 'true'
         run: ./gradlew clean build
+      - name: Verify Redis integration tests ran
+        run: |
+          python3 - <<'PY'
+          import xml.etree.ElementTree as ET
+
+          report = ET.parse('build/test-results/test/TEST-com.erlan.testtask.cache.RedisTaskCacheIntegrationTest.xml').getroot()
+          tests = int(report.attrib['tests'])
+          assert tests > 0
+          assert int(report.attrib['skipped']) == 0
+          assert int(report.attrib['failures']) == 0
+          assert int(report.attrib['errors']) == 0
+          print(f'Redis integration tests passed: {tests}')
+          PY
