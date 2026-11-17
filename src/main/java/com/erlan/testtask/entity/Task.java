@@ -13,9 +13,15 @@ import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import lombok.AccessLevel;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.Setter;
 
 @Entity
 @Table(name = "tasks")
+@Getter
+@NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class Task {
 
     @Id
@@ -24,13 +30,16 @@ public class Task {
     private Long id;
 
     @Column(name = "title", nullable = false, length = 255)
+    @Setter
     private String title;
 
     @Column(name = "description", length = 2000)
+    @Setter
     private String description;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false, length = 20)
+    @Setter
     private TaskStatus status = TaskStatus.TODO;
 
     @Column(name = "created_at", nullable = false, updatable = false)
@@ -38,10 +47,6 @@ public class Task {
 
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;
-
-    protected Task() {
-        // Required by JPA.
-    }
 
     public Task(String title, String description, TaskStatus status) {
         this.title = title;
@@ -59,41 +64,5 @@ public class Task {
     @PreUpdate
     void onUpdate() {
         updatedAt = Instant.now().truncatedTo(ChronoUnit.MICROS);
-    }
-
-    public Long getId() {
-        return id;
-    }
-
-    public String getTitle() {
-        return title;
-    }
-
-    public void setTitle(String title) {
-        this.title = title;
-    }
-
-    public String getDescription() {
-        return description;
-    }
-
-    public void setDescription(String description) {
-        this.description = description;
-    }
-
-    public TaskStatus getStatus() {
-        return status;
-    }
-
-    public void setStatus(TaskStatus status) {
-        this.status = status;
-    }
-
-    public Instant getCreatedAt() {
-        return createdAt;
-    }
-
-    public Instant getUpdatedAt() {
-        return updatedAt;
     }
 }
