@@ -9,17 +9,15 @@ import com.erlan.testtask.exception.TaskNotFoundException;
 import com.erlan.testtask.repository.TaskRepository;
 import com.erlan.testtask.service.TaskService;
 import java.util.List;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
+@RequiredArgsConstructor
 public class TaskServiceImpl implements TaskService {
 
     private final TaskRepository repository;
-
-    public TaskServiceImpl(TaskRepository repository) {
-        this.repository = repository;
-    }
 
     @Override
     @Transactional
