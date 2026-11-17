@@ -15,3 +15,8 @@ spring:
 external:
   api:
     url: https://api.restful-api.dev/objects
+
+app:
+  security:
+    username: ${APP_SECURITY_USERNAME:}
+    password: ${APP_SECURITY_PASSWORD:}
