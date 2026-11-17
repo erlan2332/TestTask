@@ -151,7 +151,8 @@ public class HttpLoggingFilter extends OncePerRequestFilter {
     }
 
     private String safePath(String path) {
-        return path.matches("/api/tasks(?:/\\d+)?") ? path : "[redacted path]";
+        return path.matches("/api/tasks(?:/\\d+)?") || "/api/external/objects".equals(path)
+                ? path : "[redacted path]";
     }
 
     private long elapsedMillis(long start) {
