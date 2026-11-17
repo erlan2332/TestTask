@@ -1,220 +1,141 @@
 # TestTask
 
-REST-сервис для управления задачами и получения списка объектов из внешнего API. Задачи хранятся в H2; список задач кэшируется в Redis; внешние объекты в базу не записываются.
+## О проекте
+
+REST API для управления задачами. Задачи хранятся в H2 во время работы приложения; список кэшируется в Redis. После создания задачи приложение может отправить уведомление на email через SMTP. Отдельный маршрут возвращает данные внешнего REST API.
+
+## Технологический стек
+
+Java 21, Spring Boot 3.5.16, Gradle 8.14.3, Spring Web MVC, Spring Data JPA, H2, Spring Security с HTTP Basic, Spring Cache, Redis, Spring Mail, Lombok, JUnit 5, Mockito, Docker и Docker Compose.
+
+## Реализованные требования
+
+| Тип | Требование | Реализация |
+|---|---|---|
+| Обязательное | CRUD задач | `POST`, `GET`, `PUT`, `DELETE` в `/api/tasks` |
+| Обязательное | Хранение задач | H2 in-memory и JPA |
+| Обязательное | Отправка созданной задачи на email | Spring Mail после коммита транзакции |
+| Дополнительное | Обработка ошибок | Единый JSON-ответ для ошибок API |
+| Дополнительное | Логирование HTTP | Метод, путь, статус, длительность; чувствительные поля скрыты |
+| Дополнительное | Внешний REST API | `GET /api/external/objects` |
+| Дополнительное | Авторизация | HTTP Basic для всех маршрутов API |
+| Дополнительное | Кэш списка задач | Redis, TTL 5 минут, инвалидация после изменений |
+| Дополнительное | Контейнеризация | Dockerfile и Compose для приложения, Redis и Mailpit |
 
 ## Архитектура
 
-Запрос проходит через `TaskController` → интерфейс `TaskService` → `TaskServiceImpl` → `TaskRepository` → H2. Контроллер работает с DTO и не обращается к JPA напрямую. Сервис управляет транзакциями и преобразует `Task` в `TaskResponse`. Для отсутствующей задачи возвращается HTTP 404.
+`TaskController` принимает и валидирует запросы, `TaskServiceImpl` выполняет операции в транзакциях, `TaskMapper` преобразует Entity и DTO, `TaskRepository` работает с H2. После сохранения сервис публикует снимок задачи как `TaskCreatedEvent`; слушатель отправляет письмо через `EmailService` только после коммита. `CacheConfig` управляет кэшем списка и очищает его при запуске, чтобы Redis не вернул данные прежнего экземпляра H2. `SecurityConfig` защищает API, `HttpLoggingFilter` пишет безопасные HTTP-логи. Внешний API вызывается через отдельные контроллер и сервис.
 
-Для внешних объектов используется отдельный путь: `ExternalApiController` → `ExternalApiService` → `ExternalApiServiceImpl` → внешний REST API. Запрос выполняется только при обращении к эндпоинту.
+## Запуск через Docker
 
-## Технологии
-
-- Java 21, Spring Boot 3.5.16, Gradle 8.14.3 (Groovy DSL и Wrapper)
-- Spring Web MVC, Spring Data JPA, Spring Validation
-- Spring Security (HTTP Basic, BCrypt)
-- Spring Cache, Spring Data Redis
-- Spring Mail
-- H2 in-memory, Hibernate
-- JUnit 5, Mockito, Spring Boot Test и MockMvc
-- Lombok
-
-## Требования и запуск
-
-Нужны JDK 21, Redis, свободный порт 8080 и доступ к интернету при первой загрузке Gradle и зависимостей. Системная установка Gradle не требуется. `JAVA_HOME` должен указывать на JDK 21. Для Homebrew `openjdk@21` на macOS:
+Нужны Docker с Compose, доступ к Docker Hub и свободные порты 8080 и 8026. Порт Mailpit UI можно изменить. Redis использует только внутреннюю сеть Compose.
 
 ```bash
-export JAVA_HOME=/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home
-docker run -d --name testtask-redis -p 127.0.0.1:6379:6379 redis:7-alpine
+git clone https://github.com/erlan2332/TestTask.git
+cd TestTask
 cp .env.example .env
-# Замените значения APP_SECURITY_USERNAME и APP_SECURITY_PASSWORD в .env.
+# Замените APP_SECURITY_USERNAME и APP_SECURITY_PASSWORD в .env.
+docker compose config > /dev/null
+docker compose up --build -d
+docker compose ps
+```
+
+`.env` не хранится в Git. Docker Compose читает его для подстановки и передаёт переменные приложению через `env_file`. Укажите непустые собственные тестовые `APP_SECURITY_USERNAME` и `APP_SECURITY_PASSWORD` до запуска. В Compose приложение всегда подключается к `redis:6379` и `mailpit:1025`; эти адреса задаются в `compose.yml` и заменяют локальные `localhost` из `.env.example`. Для локального Mailpit аутентификация SMTP и STARTTLS выключены. `APP_MAIL_ENABLED=true` включает уведомления, `false` отключает. `APP_MAIL_FROM` и `APP_MAIL_TO` задают отправителя и получателя; `MAIL_USERNAME` и `MAIL_PASSWORD` нужны только для другого SMTP при запуске вне этого Compose. Реальные пароли не коммитьте.
+
+Приложение доступно на `http://localhost:8080`, веб-интерфейс Mailpit — на [http://localhost:8026](http://localhost:8026). Если 8026 занят, измените `MAILPIT_UI_PORT` в `.env`; внутри контейнера UI остаётся на 8025. Логи и остановка:
+
+```bash
+docker compose logs app
+docker compose down
+```
+
+Compose ждёт успешного Redis healthcheck перед запуском приложения. H2 не требует отдельного контейнера. `docker compose down` удаляет контейнеры проекта; данные H2 исчезают уже при перезапуске контейнера приложения.
+
+## Проверка API
+
+Compose не экспортирует переменные из `.env` в оболочку. Для следующих команд загрузите их отдельно; `curl -u` интерактивно запросит пароль:
+
+```bash
 set -a
 . ./.env
 set +a
-./gradlew bootRun
-```
-
-Обычный `./gradlew bootRun` не загружает `.env` автоматически: переменные нужно передать процессу приложения, например как показано выше. `.env` не хранится в Git. Без непустых `APP_SECURITY_USERNAME` и `APP_SECURITY_PASSWORD` приложение не запускается. Сервис будет доступен на `http://localhost:8080`.
-
-Если контейнер уже создан, запустите его через `docker start testtask-redis`. Параметры `REDIS_HOST` и `REDIS_PORT` задают адрес Redis; по умолчанию используются `localhost:6379`. Таймаут подключения и команды — по 2 секунды. При недоступности Redis приложение не переключается на локальный кэш.
-
-## Basic Authentication
-
-Авторизация защищает задачи и проксирование внешнего API от анонимных запросов. Для всех маршрутов `/api/tasks`, `/api/tasks/{id}` и `/api/external/objects` требуется HTTP Basic с одним пользователем. Имя и пароль задаются переменными окружения `APP_SECURITY_USERNAME` и `APP_SECURITY_PASSWORD`. В памяти приложения хранится BCrypt-хеш пароля; HTTP-сессия и форма входа не используются.
-
-Пример запроса после запуска (curl интерактивно спросит пароль):
-
-```bash
+curl -i http://localhost:8080/api/tasks
 curl -i -u "$APP_SECURITY_USERNAME" http://localhost:8080/api/tasks
+curl -i -u "$APP_SECURITY_USERNAME" -H 'Content-Type: application/json' \
+  -d '{"title":"Подготовить отчёт","description":"До пятницы"}' \
+  http://localhost:8080/api/tasks
 ```
 
-Без заголовка Authorization либо с неверным именем или паролем API возвращает `401 Unauthorized` с `WWW-Authenticate: Basic` и безопасным JSON-ответом. С правильными данными сохраняются прежние статусы: `200` для чтения и обновления, `201` для создания, `204` для удаления; ошибки входных данных и бизнес-операций по-прежнему дают `400`, `404`, `405`, `415`, `500` или `502` в соответствующих случаях. Для локальной демонстрации используйте только собственные тестовые credentials; значения в `.env.example` — шаблон.
-
-## Redis Cache
-
-Redis ускоряет только `GET /api/tasks`. При **Cache MISS** приложение читает список из H2 и сохраняет его в Redis. При **Cache HIT** список возвращается из Redis без повторного обращения к `TaskRepository`. Пустой список тоже кэшируется. Другие маршруты, включая получение задачи по ID и внешний API, не кэшируются.
-
-Кэш `tasks` живёт 5 минут с момента записи. Успешные POST, PUT и DELETE задач очищают весь кэш `tasks` после фиксации транзакции; следующий GET вновь читает H2. Ошибка или откат транзакции не должны очищать актуальный кэш. При запуске приложения очищаются только ключи кэша `tasks`: H2 in-memory после перезапуска пуста, поэтому старый список из Redis был бы неверным. Другие ключи Redis не удаляются. Список DTO хранится стандартной JDK-сериализацией; `TaskResponse` реализует `Serializable`.
-
-Для проверки после запуска приложения выполните два одинаковых авторизованных GET и посмотрите ключ и TTL:
+Первый запрос вернёт `401`, второй — `200`, создание — `201` с `Location: /api/tasks/<id>`. Подставьте полученный ID для остальных операций:
 
 ```bash
-curl -i -u "$APP_SECURITY_USERNAME" http://localhost:8080/api/tasks
-curl -i -u "$APP_SECURITY_USERNAME" http://localhost:8080/api/tasks
-docker exec testtask-redis redis-cli --scan --pattern 'tasks::*'
-docker exec testtask-redis redis-cli TTL 'tasks::SimpleKey []'
+curl -i -u "$APP_SECURITY_USERNAME" http://localhost:8080/api/tasks/1
+curl -i -u "$APP_SECURITY_USERNAME" -X PUT -H 'Content-Type: application/json' \
+  -d '{"title":"Отчёт готов","status":"DONE"}' http://localhost:8080/api/tasks/1
+curl -i -u "$APP_SECURITY_USERNAME" -X DELETE http://localhost:8080/api/tasks/1
 ```
 
-TTL после первого GET близок к 300 секундам. Для проверки чтения из БД можно запустить приложение с `./gradlew bootRun --args='--logging.level.org.hibernate.SQL=DEBUG'`: первый GET выведет запрос списка, повторный — нет. Затем создайте, обновите или удалите задачу через API: ключ `tasks::*` исчезнет, а следующий GET создаст его заново с актуальными данными. Авторизация проверяется до доступа к кэшу; анонимный запрос получает 401.
+GET по ID и PUT возвращают `200`, DELETE — `204`. Несуществующий ID возвращает `404`, некорректные данные или статус — `400`. Статусы задачи: `TODO`, `IN_PROGRESS`, `DONE`. При создании статус по умолчанию `TODO`; название обязательно и ограничено 255 символами, описание — 2000 символами. Для PUT обязательны название и статус. API возвращает безопасный JSON для ошибок; подробности исключений клиенту не передаются.
 
-## Email-уведомления
+## Redis
 
-После успешного создания задачи через `POST /api/tasks` приложение отправляет текстовое письмо на адрес `APP_MAIL_TO` от `APP_MAIL_FROM`. В письме указаны ID, название, описание, статус и время создания. Если описание отсутствует, выводится `Not provided`. Обновление и удаление задачи письма не отправляют.
-
-`TaskServiceImpl` публикует снимок сохранённой задачи как `TaskCreatedEvent` внутри транзакции. Слушатель отправляет письмо через Spring Mail только в фазе `AFTER_COMMIT`. При откате письмо не отправляется. При недоступном SMTP задача остаётся в H2, кэш списка очищается, а POST возвращает прежний HTTP 201. Ошибка записывается в лог без содержимого письма и SMTP credentials. Отправка выполняется синхронно после коммита, поэтому может немного увеличить время HTTP-запроса; автоматической повторной доставки и гарантии доставки нет.
-
-Уведомления включаются `APP_MAIL_ENABLED=true` и отключаются `APP_MAIL_ENABLED=false` (по умолчанию). Для локальной проверки `.env.example` содержит `true`, тестовые адреса и настройки Mailpit. Параметры SMTP задаются `MAIL_HOST`, `MAIL_PORT`, `MAIL_USERNAME`, `MAIL_PASSWORD`, `MAIL_SMTP_AUTH`, `MAIL_SMTP_STARTTLS`. Для настоящего SMTP укажите учётные данные и включите нужные auth/TLS; не сохраняйте реальные пароли в Git. Таймаут соединения — 3 секунды, чтения и записи — по 5 секунд.
-
-Для локальной проверки запустите Mailpit и Redis, загрузите переменные из `.env`, затем запустите приложение и выполните авторизованный POST из раздела «Создание»:
+Кэшируется только `GET /api/tasks`, включая пустой список. Первый запрос читает H2 и создаёт запись `tasks::*` в Redis; повторный получает данные из кэша. Время жизни — 5 минут. Успешные POST, PUT и DELETE очищают кэш после фиксации транзакции; при откате он остаётся. Проверка ключа и TTL:
 
 ```bash
-docker run -d --name testtask-mailpit -p 127.0.0.1:1025:1025 -p 127.0.0.1:8025:8025 axllent/mailpit
-set -a
-. ./.env
-set +a
-./gradlew bootRun
+docker compose exec redis redis-cli --scan --pattern 'tasks::*'
+docker compose exec redis redis-cli TTL 'tasks::SimpleKey []'
 ```
 
-Если контейнер Mailpit уже существует, используйте `docker start testtask-mailpit`. Письмо можно увидеть в интерфейсе [Mailpit](http://localhost:8025). Mailpit перехватывает сообщения и не доставляет их на реальные адреса. Проверьте тему `New task created: #<ID>` и совпадение полей с ответом API. Для проверки сбоя SMTP остановите Mailpit, повторите POST и убедитесь, что HTTP 201 и задача в последующем GET сохраняются.
+Redis не опубликован на хосте. При запуске приложения старый кэш задач очищается, поскольку H2 in-memory после перезапуска пуста. Другие ключи Redis не затрагиваются.
 
-## API
+## Email
 
-| Метод | Путь | Успешный статус | Результат |
-|---|---|---:|---|
-| POST | `/api/tasks` | 201 Created | Создать задачу; ответ содержит `Location` |
-| GET | `/api/tasks` | 200 OK | Список задач; `[]`, если задач нет |
-| GET | `/api/tasks/{id}` | 200 OK | Получить задачу |
-| PUT | `/api/tasks/{id}` | 200 OK | Полностью обновить редактируемые поля |
-| DELETE | `/api/tasks/{id}` | 204 No Content | Удалить задачу; тело ответа пустое |
-| GET | `/api/external/objects` | 200 OK | Получить JSON из внешнего API |
+При успешном POST письмо содержит ID, название, описание, статус и время создания задачи. Если описание отсутствует, указано `Not provided`. Письмо отправляется после коммита через SMTP Mailpit; при откате или ошибке валидации отправки нет. PUT и DELETE писем не создают. Сообщения можно просмотреть в [Mailpit UI](http://localhost:8026) (или на порту `MAILPIT_UI_PORT` из `.env`). Mailpit перехватывает письма и не доставляет их реальным адресатам.
 
-Статусы задачи: `TODO`, `IN_PROGRESS`, `DONE`. При создании `status` можно опустить: будет использован `TODO`. Для PUT обязательны `title` и `status`; `description: null` очищает описание. `title` не может быть пустым и ограничен 255 символами, `description` — 2000 символами. Некорректные данные или значение статуса дают HTTP 400. Обращение к несуществующему ID даёт HTTP 404.
+При недоступном SMTP созданная задача остаётся в H2, POST возвращает `201`, ошибка логируется без содержимого письма и credentials. SMTP имеет таймауты: 3 секунды для подключения, по 5 секунд для чтения и записи. Отправка синхронная и может увеличить время запроса; автоматической повторной доставки нет.
 
-### Создание
-
-```bash
-curl -i -u "$APP_SECURITY_USERNAME" -X POST http://localhost:8080/api/tasks \
-  -H 'Content-Type: application/json' \
-  -d '{"title":"Подготовить отчёт","description":"До пятницы"}'
-```
-
-Пример ответа `201 Created` (ID и время будут другими):
-
-```json
-{
-  "id": 1,
-  "title": "Подготовить отчёт",
-  "description": "До пятницы",
-  "status": "TODO",
-  "createdAt": "2026-11-17T08:00:00Z",
-  "updatedAt": "2026-11-17T08:00:00Z"
-}
-```
-
-Заголовок `Location` содержит `/api/tasks/1` для этого примера.
-
-### Полное обновление
-
-```bash
-curl -i -u "$APP_SECURITY_USERNAME" -X PUT http://localhost:8080/api/tasks/1 \
-  -H 'Content-Type: application/json' \
-  -d '{"title":"Отчёт готов","description":null,"status":"DONE"}'
-```
-
-Пример ответа `200 OK`:
-
-```json
-{
-  "id": 1,
-  "title": "Отчёт готов",
-  "description": null,
-  "status": "DONE",
-  "createdAt": "2026-11-17T08:00:00Z",
-  "updatedAt": "2026-11-17T08:05:00Z"
-}
-```
-
-Поля `id`, `createdAt` и `updatedAt` задаются приложением и не входят в запросы.
-
-## Внешний REST API
-
-`GET /api/external/objects` обращается к `https://api.restful-api.dev/objects` через Spring `RestClient` и возвращает полученный JSON-массив клиенту без сохранения в H2. URL задан свойством `external.api.url` в `application.yml`. Таймаут подключения — 3 секунды, чтения — 5 секунд.
+## Внешний API
 
 ```bash
 curl -i -u "$APP_SECURITY_USERNAME" http://localhost:8080/api/external/objects
 ```
 
-Пример элемента ответа (состав внешних данных может измениться):
+Приложение делает GET к `https://api.restful-api.dev/objects`, возвращает JSON без сохранения в H2 и записывает ограниченный внешний ответ в лог. При недоступности сервиса или ошибочном ответе возвращается безопасный `502 Bad Gateway`. Таймаут подключения — 3 секунды, чтения — 5 секунд.
 
-```json
-[
-  {
-    "id": "1",
-    "name": "Google Pixel 6 Pro",
-    "data": {"color": "Cloudy White", "capacity": "128 GB"}
-  }
-]
+## Запуск без Docker
+
+Нужны JDK 21 и локальные Redis (`localhost:6379`) и Mailpit SMTP (`localhost:1025`, UI `localhost:8025`). Их можно запустить отдельными контейнерами. Если контейнеры уже созданы, используйте `docker start` с соответствующим именем вместо нового `docker run`.
+
+```bash
+export JAVA_HOME=/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home
+docker run -d --name testtask-redis -p 127.0.0.1:6379:6379 redis:7-alpine
+docker run -d --name testtask-mailpit -p 127.0.0.1:1025:1025 -p 127.0.0.1:8025:8025 axllent/mailpit
+cp .env.example .env
+# Замените APP_SECURITY_USERNAME и APP_SECURITY_PASSWORD в .env.
+set -a
+. ./.env
+set +a
+./gradlew bootRun
 ```
 
-Приложение записывает в лог полученный JSON, метод и статус внешнего запроса. Логируемое содержимое ограничено 4096 символами; при превышении добавляется `[truncated]`. Заголовки и cookie не записываются. Для недоступного сервиса, внешнего HTTP 4xx/5xx, пустого или некорректного JSON возвращается `502 Bad Gateway` в едином формате ошибок. Вызов зависит от доступности внешнего сервиса и не кэшируется.
+`./gradlew bootRun` сам по себе не загружает `.env`. При запуске без Docker `REDIS_HOST=localhost` и `MAIL_HOST=localhost`; переменные `MAILPIT_UI_PORT` приложением не используются. На другой ОС укажите свой путь к JDK 21.
 
-## Обработка ошибок
-
-REST API возвращает ошибки в едином JSON-формате: `timestamp` (UTC, `Instant`), числовой `status`, текстовый `error`, безопасное `message` и путь `path` без параметров запроса. Например, если задачи нет:
-
-```json
-{
-  "timestamp": "2026-11-17T12:00:00Z",
-  "status": 404,
-  "error": "Not Found",
-  "message": "Task with id 999 not found",
-  "path": "/api/tasks/999"
-}
-```
-
-Для ошибок валидации, некорректного JSON, статуса задачи и типа ID возвращается `400 Bad Request` с сообщением `Invalid request`. Неподдерживаемый метод даёт `405 Method Not Allowed`, неподдерживаемый тип содержимого — `415 Unsupported Media Type`. Неожиданные ошибки дают `500 Internal Server Error` с сообщением `Internal server error`; детали исключения клиенту не передаются. Время в примере условное.
-
-Ошибка аутентификации обрабатывается фильтром Spring Security и возвращает тот же формат с `status: 401`, `error: "Unauthorized"`, `message: "Authentication required"` и заголовком `WWW-Authenticate`. Ответ не уточняет, какое из учётных данных неверно.
-
-Сбой внешнего API даёт `502 Bad Gateway`, например с `message: "External service unavailable"`. В ответе нет внутреннего адреса сервиса или тела его ошибки.
-
-## Логирование
-
-Для запросов и ответов пишутся метод, путь, HTTP-статус ответа и длительность обработки в миллисекундах. Для JSON также пишется ограниченное представление тела. Это касается и ответов с ошибками. Тело запроса читается после обработки, а тело ответа копируется обратно клиенту. Пустое тело помечается `[empty]`.
-
-Заголовки, включая Authorization, cookie и параметры URL не записываются. Значения произвольного текста в JSON задач, включая `title`, `description`, сообщения об ошибках и неизвестные поля, скрываются. Из известных значений видны только числовой `id`, числовой HTTP-статус и допустимые значения статуса задачи. Вложенные объекты обрабатываются рекурсивно. Тело не пишется для не-JSON, multipart, потоковых запросов и запросов вне `/api/tasks`; для них остаются записи с методом, путём, статусом и длительностью. Путь `/api/external/objects` распознаётся фильтром, но его тело в HTTP-логе опускается: внешний JSON записывается отдельно сервисом один раз. Неизвестные или содержащие произвольный сегмент пути в логах скрываются. Длина представления тела задач ограничена 4096 символами; тело от 8192 байт помечается как усечённое без записи содержимого.
-
-Пример записей для создания задачи (время и ID приведены только как пример):
-
-```text
-HTTP REQUEST | POST /api/tasks | body={"title":"[REDACTED]","status":"TODO"}
-HTTP RESPONSE | POST /api/tasks | status=201 | durationMs=35 | body={"id":1,"title":"[REDACTED]","description":null,"status":"TODO","createdAt":"[REDACTED]","updatedAt":"[REDACTED]"}
-```
-
-## H2
-
-Используется база `jdbc:h2:mem:testtask`; внешний сервер БД не нужен. Hibernate создаёт таблицу `tasks` по JPA-сущности. Данные существуют только во время работы процесса приложения и удаляются после его завершения. H2 Console по умолчанию не включена.
-
-## Сборка и тесты
+## Тестирование
 
 ```bash
 ./gradlew clean build
 ./gradlew test
 RUN_REDIS_TESTS=true ./gradlew test --rerun-tasks
+docker build -t testtask:local .
+docker compose config > /dev/null
 ```
 
-`build` уже запускает тесты. Обычная локальная сборка использует `spring.cache.type=none` и `app.mail.enabled=false`, поэтому не требует Redis и SMTP. Тесты кэша через Spring proxy используют локальный CacheManager; отдельный набор Redis-тестов включается переменной `RUN_REDIS_TESTS=true` и требует Redis на `localhost:6379`. Он проверяет запись, чтение, TTL, сериализацию, инвалидацию, откат, очистку при запуске и совместную работу с email при сбое SMTP. Email-тесты отдельно включают уведомления и подменяют `JavaMailSender`, проверяя отправку после коммита, отсутствие отправки при откате и ошибках запроса. GitHub Actions запускает Redis service и `clean build` с Redis-тестами при Pull Request в `task-dev`; настоящий SMTP для CI не требуется.
+`build` уже запускает тесты. Обычные тесты используют локальный кэш и подменённый почтовый отправитель, поэтому реальный Redis и SMTP им не нужны. Для набора `RUN_REDIS_TESTS=true` нужен Redis на `localhost:6379`; эти тесты проверяют TTL, инвалидацию, откат и взаимодействие с email. GitHub Actions запускает Redis service, Gradle build и проверку запуска Redis-тестов, затем собирает Docker image. CI не требует настоящего SMTP и не публикует образ.
 
-Внешний клиент тестируется через `MockRestServiceServer`, а контроллер — с подменённым сервисом; эти тесты не обращаются к интернету. В тестовых ресурсах заданы только фиктивные credentials `test-user` / `test-password`. Для ручной проверки после запуска выполните `curl -i -u "$APP_SECURITY_USERNAME" http://localhost:8080/api/external/objects` и проверьте статус, JSON и запись `EXTERNAL API` в логах.
+HTTP-логи содержат метод, путь, статус и длительность. Значения названия и описания, заголовок Authorization, cookie и SMTP credentials в них не записываются.
 
-Основная ветка проекта — `task-dev`. Изменения вносятся через отдельные ветки и Pull Requests в `task-dev`.
+## Ограничения
+
+- H2 работает в памяти контейнера. После перезапуска приложения задачи исчезают; Redis-кэш списка очищается при старте.
+- Маршрут внешнего API зависит от доступности стороннего сервиса.
+- Email отправляется синхронно после коммита; автоматических повторных попыток и гарантированной доставки нет.
