@@ -10,6 +10,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.erlan.testtask.dto.request.CreateTaskRequest;
 import com.erlan.testtask.entity.Task;
 import com.erlan.testtask.enums.TaskStatus;
 import com.erlan.testtask.repository.TaskRepository;
@@ -22,6 +23,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.test.web.servlet.MockMvc;
 
@@ -32,12 +34,19 @@ class TaskControllerIntegrationTest {
     private final MockMvc mockMvc;
     private final ObjectMapper objectMapper;
     private final TaskRepository repository;
+    private final JdbcTemplate jdbcTemplate;
 
     @Autowired
-    TaskControllerIntegrationTest(MockMvc mockMvc, ObjectMapper objectMapper, TaskRepository repository) {
+    TaskControllerIntegrationTest(
+            MockMvc mockMvc,
+            ObjectMapper objectMapper,
+            TaskRepository repository,
+            JdbcTemplate jdbcTemplate
+    ) {
         this.mockMvc = mockMvc;
         this.objectMapper = objectMapper;
         this.repository = repository;
+        this.jdbcTemplate = jdbcTemplate;
     }
 
     @BeforeEach
@@ -70,6 +79,12 @@ class TaskControllerIntegrationTest {
         assertThat(stored.getStatus()).isEqualTo(TaskStatus.TODO);
         assertThat(stored.getCreatedAt()).isEqualTo(Instant.parse(body.path("createdAt").asText()));
         assertThat(stored.getUpdatedAt()).isEqualTo(Instant.parse(body.path("updatedAt").asText()));
+        Integer tableCount = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES "
+                        + "WHERE TABLE_SCHEMA = 'PUBLIC' AND TABLE_NAME = 'TASKS'",
+                Integer.class
+        );
+        assertThat(tableCount).isEqualTo(1);
     }
 
     @Test
@@ -159,6 +174,18 @@ class TaskControllerIntegrationTest {
                         .content("""
                                 {"title":"  ","status":"TODO"}
                                 """))
+                .andExpect(status().isBadRequest());
+
+        mockMvc.perform(post("/api/tasks")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(
+                                new CreateTaskRequest("x".repeat(256), null, null))))
+                .andExpect(status().isBadRequest());
+
+        mockMvc.perform(post("/api/tasks")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(
+                                new CreateTaskRequest("Valid", "x".repeat(2001), null))))
                 .andExpect(status().isBadRequest());
 
         Task stored = repository.saveAndFlush(new Task("Original", null, TaskStatus.TODO));
