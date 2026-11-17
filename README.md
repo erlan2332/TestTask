@@ -1,6 +1,6 @@
 # TestTask
 
-REST-сервис для управления задачами и получения списка объектов из внешнего API. Задачи хранятся в H2; внешние объекты в базу не записываются.
+REST-сервис для управления задачами и получения списка объектов из внешнего API. Задачи хранятся в H2; список задач кэшируется в Redis; внешние объекты в базу не записываются.
 
 ## Архитектура
 
@@ -13,18 +13,20 @@ REST-сервис для управления задачами и получен
 - Java 21, Spring Boot 3.5.16, Gradle 8.14.3 (Groovy DSL и Wrapper)
 - Spring Web MVC, Spring Data JPA, Spring Validation
 - Spring Security (HTTP Basic, BCrypt)
+- Spring Cache, Spring Data Redis
 - H2 in-memory, Hibernate
 - JUnit 5, Mockito, Spring Boot Test и MockMvc
 - Lombok
 
 ## Требования и запуск
 
-Нужны JDK 21, свободный порт 8080 и доступ к интернету при первой загрузке Gradle и зависимостей. Системная установка Gradle не требуется. `JAVA_HOME` должен указывать на JDK 21. Для Homebrew `openjdk@21` на macOS:
+Нужны JDK 21, Redis, свободный порт 8080 и доступ к интернету при первой загрузке Gradle и зависимостей. Системная установка Gradle не требуется. `JAVA_HOME` должен указывать на JDK 21. Для Homebrew `openjdk@21` на macOS:
 
 ```bash
 export JAVA_HOME=/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home
+docker run -d --name testtask-redis -p 127.0.0.1:6379:6379 redis:7-alpine
 cp .env.example .env
-# Замените значения в .env на свои локальные credentials.
+# Замените значения APP_SECURITY_USERNAME и APP_SECURITY_PASSWORD в .env.
 set -a
 . ./.env
 set +a
@@ -32,6 +34,8 @@ set +a
 ```
 
 Обычный `./gradlew bootRun` не загружает `.env` автоматически: переменные нужно передать процессу приложения, например как показано выше. `.env` не хранится в Git. Без непустых `APP_SECURITY_USERNAME` и `APP_SECURITY_PASSWORD` приложение не запускается. Сервис будет доступен на `http://localhost:8080`.
+
+Если контейнер уже создан, запустите его через `docker start testtask-redis`. Параметры `REDIS_HOST` и `REDIS_PORT` задают адрес Redis; по умолчанию используются `localhost:6379`. Таймаут подключения и команды — по 2 секунды. При недоступности Redis приложение не переключается на локальный кэш.
 
 ## Basic Authentication
 
@@ -44,6 +48,23 @@ curl -i -u "$APP_SECURITY_USERNAME" http://localhost:8080/api/tasks
 ```
 
 Без заголовка Authorization либо с неверным именем или паролем API возвращает `401 Unauthorized` с `WWW-Authenticate: Basic` и безопасным JSON-ответом. С правильными данными сохраняются прежние статусы: `200` для чтения и обновления, `201` для создания, `204` для удаления; ошибки входных данных и бизнес-операций по-прежнему дают `400`, `404`, `405`, `415`, `500` или `502` в соответствующих случаях. Для локальной демонстрации используйте только собственные тестовые credentials; значения в `.env.example` — шаблон.
+
+## Redis Cache
+
+Redis ускоряет только `GET /api/tasks`. При **Cache MISS** приложение читает список из H2 и сохраняет его в Redis. При **Cache HIT** список возвращается из Redis без повторного обращения к `TaskRepository`. Пустой список тоже кэшируется. Другие маршруты, включая получение задачи по ID и внешний API, не кэшируются.
+
+Кэш `tasks` живёт 5 минут с момента записи. Успешные POST, PUT и DELETE задач очищают весь кэш `tasks` после фиксации транзакции; следующий GET вновь читает H2. Ошибка или откат транзакции не должны очищать актуальный кэш. При запуске приложения очищаются только ключи кэша `tasks`: H2 in-memory после перезапуска пуста, поэтому старый список из Redis был бы неверным. Другие ключи Redis не удаляются. Список DTO хранится стандартной JDK-сериализацией; `TaskResponse` реализует `Serializable`.
+
+Для проверки после запуска приложения выполните два одинаковых авторизованных GET и посмотрите ключ и TTL:
+
+```bash
+curl -i -u "$APP_SECURITY_USERNAME" http://localhost:8080/api/tasks
+curl -i -u "$APP_SECURITY_USERNAME" http://localhost:8080/api/tasks
+docker exec testtask-redis redis-cli --scan --pattern 'tasks::*'
+docker exec testtask-redis redis-cli TTL 'tasks::SimpleKey []'
+```
+
+TTL после первого GET близок к 300 секундам. Для проверки чтения из БД можно запустить приложение с `./gradlew bootRun --args='--logging.level.org.hibernate.SQL=DEBUG'`: первый GET выведет запрос списка, повторный — нет. Затем создайте, обновите или удалите задачу через API: ключ `tasks::*` исчезнет, а следующий GET создаст его заново с актуальными данными. Авторизация проверяется до доступа к кэшу; анонимный запрос получает 401.
 
 ## API
 
@@ -168,9 +189,10 @@ HTTP RESPONSE | POST /api/tasks | status=201 | durationMs=35 | body={"id":1,"tit
 ```bash
 ./gradlew clean build
 ./gradlew test
+RUN_REDIS_TESTS=true ./gradlew test --rerun-tasks
 ```
 
-`build` уже запускает тесты. Unit-тесты проверяют сервис с Mockito; интеграционные тесты проверяют HTTP API и JPA на H2. GitHub Actions запускает `clean build` при push в `task-dev` и при Pull Request в `task-dev`.
+`build` уже запускает тесты. Обычная локальная сборка использует `spring.cache.type=none`, поэтому не требует Redis. Тесты кэша через Spring proxy используют локальный CacheManager; отдельный набор Redis-тестов включается переменной `RUN_REDIS_TESTS=true` и требует Redis на `localhost:6379`. Он проверяет запись, чтение, TTL, сериализацию, инвалидацию, откат и очистку при запуске. GitHub Actions запускает Redis service и `clean build` с Redis-тестами при Pull Request в `task-dev`.
 
 Внешний клиент тестируется через `MockRestServiceServer`, а контроллер — с подменённым сервисом; эти тесты не обращаются к интернету. В тестовых ресурсах заданы только фиктивные credentials `test-user` / `test-password`. Для ручной проверки после запуска выполните `curl -i -u "$APP_SECURITY_USERNAME" http://localhost:8080/api/external/objects` и проверьте статус, JSON и запись `EXTERNAL API` в логах.
 
