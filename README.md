@@ -14,6 +14,7 @@ REST-сервис для управления задачами и получен
 - Spring Web MVC, Spring Data JPA, Spring Validation
 - Spring Security (HTTP Basic, BCrypt)
 - Spring Cache, Spring Data Redis
+- Spring Mail
 - H2 in-memory, Hibernate
 - JUnit 5, Mockito, Spring Boot Test и MockMvc
 - Lombok
@@ -65,6 +66,26 @@ docker exec testtask-redis redis-cli TTL 'tasks::SimpleKey []'
 ```
 
 TTL после первого GET близок к 300 секундам. Для проверки чтения из БД можно запустить приложение с `./gradlew bootRun --args='--logging.level.org.hibernate.SQL=DEBUG'`: первый GET выведет запрос списка, повторный — нет. Затем создайте, обновите или удалите задачу через API: ключ `tasks::*` исчезнет, а следующий GET создаст его заново с актуальными данными. Авторизация проверяется до доступа к кэшу; анонимный запрос получает 401.
+
+## Email-уведомления
+
+После успешного создания задачи через `POST /api/tasks` приложение отправляет текстовое письмо на адрес `APP_MAIL_TO` от `APP_MAIL_FROM`. В письме указаны ID, название, описание, статус и время создания. Если описание отсутствует, выводится `Not provided`. Обновление и удаление задачи письма не отправляют.
+
+`TaskServiceImpl` публикует снимок сохранённой задачи как `TaskCreatedEvent` внутри транзакции. Слушатель отправляет письмо через Spring Mail только в фазе `AFTER_COMMIT`. При откате письмо не отправляется. При недоступном SMTP задача остаётся в H2, кэш списка очищается, а POST возвращает прежний HTTP 201. Ошибка записывается в лог без содержимого письма и SMTP credentials. Отправка выполняется синхронно после коммита, поэтому может немного увеличить время HTTP-запроса; автоматической повторной доставки и гарантии доставки нет.
+
+Уведомления включаются `APP_MAIL_ENABLED=true` и отключаются `APP_MAIL_ENABLED=false` (по умолчанию). Для локальной проверки `.env.example` содержит `true`, тестовые адреса и настройки Mailpit. Параметры SMTP задаются `MAIL_HOST`, `MAIL_PORT`, `MAIL_USERNAME`, `MAIL_PASSWORD`, `MAIL_SMTP_AUTH`, `MAIL_SMTP_STARTTLS`. Для настоящего SMTP укажите учётные данные и включите нужные auth/TLS; не сохраняйте реальные пароли в Git. Таймаут соединения — 3 секунды, чтения и записи — по 5 секунд.
+
+Для локальной проверки запустите Mailpit и Redis, загрузите переменные из `.env`, затем запустите приложение и выполните авторизованный POST из раздела «Создание»:
+
+```bash
+docker run -d --name testtask-mailpit -p 127.0.0.1:1025:1025 -p 127.0.0.1:8025:8025 axllent/mailpit
+set -a
+. ./.env
+set +a
+./gradlew bootRun
+```
+
+Если контейнер Mailpit уже существует, используйте `docker start testtask-mailpit`. Письмо можно увидеть в интерфейсе [Mailpit](http://localhost:8025). Mailpit перехватывает сообщения и не доставляет их на реальные адреса. Проверьте тему `New task created: #<ID>` и совпадение полей с ответом API. Для проверки сбоя SMTP остановите Mailpit, повторите POST и убедитесь, что HTTP 201 и задача в последующем GET сохраняются.
 
 ## API
 
@@ -192,7 +213,7 @@ HTTP RESPONSE | POST /api/tasks | status=201 | durationMs=35 | body={"id":1,"tit
 RUN_REDIS_TESTS=true ./gradlew test --rerun-tasks
 ```
 
-`build` уже запускает тесты. Обычная локальная сборка использует `spring.cache.type=none`, поэтому не требует Redis. Тесты кэша через Spring proxy используют локальный CacheManager; отдельный набор Redis-тестов включается переменной `RUN_REDIS_TESTS=true` и требует Redis на `localhost:6379`. Он проверяет запись, чтение, TTL, сериализацию, инвалидацию, откат и очистку при запуске. GitHub Actions запускает Redis service и `clean build` с Redis-тестами при Pull Request в `task-dev`.
+`build` уже запускает тесты. Обычная локальная сборка использует `spring.cache.type=none` и `app.mail.enabled=false`, поэтому не требует Redis и SMTP. Тесты кэша через Spring proxy используют локальный CacheManager; отдельный набор Redis-тестов включается переменной `RUN_REDIS_TESTS=true` и требует Redis на `localhost:6379`. Он проверяет запись, чтение, TTL, сериализацию, инвалидацию, откат, очистку при запуске и совместную работу с email при сбое SMTP. Email-тесты отдельно включают уведомления и подменяют `JavaMailSender`, проверяя отправку после коммита, отсутствие отправки при откате и ошибках запроса. GitHub Actions запускает Redis service и `clean build` с Redis-тестами при Pull Request в `task-dev`; настоящий SMTP для CI не требуется.
 
 Внешний клиент тестируется через `MockRestServiceServer`, а контроллер — с подменённым сервисом; эти тесты не обращаются к интернету. В тестовых ресурсах заданы только фиктивные credentials `test-user` / `test-password`. Для ручной проверки после запуска выполните `curl -i -u "$APP_SECURITY_USERNAME" http://localhost:8080/api/external/objects` и проверьте статус, JSON и запись `EXTERNAL API` в логах.
 
