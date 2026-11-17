@@ -4,15 +4,24 @@ import com.erlan.testtask.enums.TaskStatus;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
+import lombok.AllArgsConstructor;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.Setter;
 
-public record UpdateTaskRequest(
-        @NotBlank @Size(max = 255)
-        String title,
+@Getter
+@Setter
+@NoArgsConstructor
+@AllArgsConstructor
+public class UpdateTaskRequest {
 
-        @Size(max = 2000)
-        String description,
+    @NotBlank
+    @Size(max = 255)
+    private String title;
 
-        @NotNull
-        TaskStatus status
-) {
+    @Size(max = 2000)
+    private String description;
+
+    @NotNull
+    private TaskStatus status;
 }

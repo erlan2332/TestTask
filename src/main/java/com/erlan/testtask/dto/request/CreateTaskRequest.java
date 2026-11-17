@@ -3,14 +3,23 @@ package com.erlan.testtask.dto.request;
 import com.erlan.testtask.enums.TaskStatus;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
+import lombok.AllArgsConstructor;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.Setter;
 
-public record CreateTaskRequest(
-        @NotBlank @Size(max = 255)
-        String title,
+@Getter
+@Setter
+@NoArgsConstructor
+@AllArgsConstructor
+public class CreateTaskRequest {
 
-        @Size(max = 2000)
-        String description,
+    @NotBlank
+    @Size(max = 255)
+    private String title;
 
-        TaskStatus status
-) {
+    @Size(max = 2000)
+    private String description;
+
+    private TaskStatus status;
 }

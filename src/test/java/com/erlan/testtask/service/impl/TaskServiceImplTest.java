@@ -13,14 +13,15 @@ import com.erlan.testtask.dto.response.TaskResponse;
 import com.erlan.testtask.entity.Task;
 import com.erlan.testtask.enums.TaskStatus;
 import com.erlan.testtask.exception.TaskNotFoundException;
+import com.erlan.testtask.mapper.TaskMapper;
 import com.erlan.testtask.repository.TaskRepository;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
@@ -31,8 +32,12 @@ class TaskServiceImplTest {
     @Mock
     private TaskRepository repository;
 
-    @InjectMocks
     private TaskServiceImpl service;
+
+    @BeforeEach
+    void setUp() {
+        service = new TaskServiceImpl(repository, new TaskMapper());
+    }
 
     @Test
     void createTaskSavesAndReturnsTask() {
@@ -53,9 +58,9 @@ class TaskServiceImplTest {
         assertThat(taskCaptor.getValue().getTitle()).isEqualTo("Write tests");
         assertThat(taskCaptor.getValue().getDescription()).isEqualTo("CRUD tests");
         assertThat(taskCaptor.getValue().getStatus()).isEqualTo(TaskStatus.IN_PROGRESS);
-        assertThat(response.id()).isEqualTo(7L);
-        assertThat(response.title()).isEqualTo("Write tests");
-        assertThat(response.status()).isEqualTo(TaskStatus.IN_PROGRESS);
+        assertThat(response.getId()).isEqualTo(7L);
+        assertThat(response.getTitle()).isEqualTo("Write tests");
+        assertThat(response.getStatus()).isEqualTo(TaskStatus.IN_PROGRESS);
     }
 
     @Test
@@ -71,7 +76,7 @@ class TaskServiceImplTest {
         ArgumentCaptor<Task> taskCaptor = ArgumentCaptor.forClass(Task.class);
         verify(repository).saveAndFlush(taskCaptor.capture());
         assertThat(taskCaptor.getValue().getStatus()).isEqualTo(TaskStatus.TODO);
-        assertThat(response.status()).isEqualTo(TaskStatus.TODO);
+        assertThat(response.getStatus()).isEqualTo(TaskStatus.TODO);
     }
 
     @Test
@@ -86,8 +91,8 @@ class TaskServiceImplTest {
         List<TaskResponse> responses = service.getAllTasks();
 
         // Then
-        assertThat(responses).extracting(TaskResponse::id).containsExactly(1L, 2L);
-        assertThat(responses).extracting(TaskResponse::status)
+        assertThat(responses).extracting(TaskResponse::getId).containsExactly(1L, 2L);
+        assertThat(responses).extracting(TaskResponse::getStatus)
                 .containsExactly(TaskStatus.TODO, TaskStatus.DONE);
         verify(repository).findAll();
     }
@@ -114,9 +119,9 @@ class TaskServiceImplTest {
         TaskResponse response = service.getTaskById(4L);
 
         // Then
-        assertThat(response.id()).isEqualTo(4L);
-        assertThat(response.title()).isEqualTo("Found");
-        assertThat(response.status()).isEqualTo(TaskStatus.IN_PROGRESS);
+        assertThat(response.getId()).isEqualTo(4L);
+        assertThat(response.getTitle()).isEqualTo("Found");
+        assertThat(response.getStatus()).isEqualTo(TaskStatus.IN_PROGRESS);
         verify(repository).findById(4L);
     }
 
@@ -153,9 +158,9 @@ class TaskServiceImplTest {
         assertThat(taskCaptor.getValue().getDescription()).isNull();
         assertThat(taskCaptor.getValue().getStatus()).isEqualTo(TaskStatus.DONE);
         assertThat(taskCaptor.getValue().getCreatedAt()).isEqualTo(createdAt);
-        assertThat(response.title()).isEqualTo("New");
-        assertThat(response.description()).isNull();
-        assertThat(response.status()).isEqualTo(TaskStatus.DONE);
+        assertThat(response.getTitle()).isEqualTo("New");
+        assertThat(response.getDescription()).isNull();
+        assertThat(response.getStatus()).isEqualTo(TaskStatus.DONE);
     }
 
     @Test

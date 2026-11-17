@@ -4,8 +4,8 @@ import com.erlan.testtask.dto.request.CreateTaskRequest;
 import com.erlan.testtask.dto.request.UpdateTaskRequest;
 import com.erlan.testtask.dto.response.TaskResponse;
 import com.erlan.testtask.entity.Task;
-import com.erlan.testtask.enums.TaskStatus;
 import com.erlan.testtask.exception.TaskNotFoundException;
+import com.erlan.testtask.mapper.TaskMapper;
 import com.erlan.testtask.repository.TaskRepository;
 import com.erlan.testtask.service.TaskService;
 import java.util.List;
@@ -18,35 +18,33 @@ import org.springframework.transaction.annotation.Transactional;
 public class TaskServiceImpl implements TaskService {
 
     private final TaskRepository repository;
+    private final TaskMapper mapper;
 
     @Override
     @Transactional
     public TaskResponse createTask(CreateTaskRequest request) {
-        TaskStatus status = request.status() == null ? TaskStatus.TODO : request.status();
-        Task task = new Task(request.title(), request.description(), status);
-        return toResponse(repository.saveAndFlush(task));
+        Task task = mapper.toEntity(request);
+        return mapper.toDto(repository.saveAndFlush(task));
     }
 
     @Override
     @Transactional(readOnly = true)
     public List<TaskResponse> getAllTasks() {
-        return repository.findAll().stream().map(this::toResponse).toList();
+        return repository.findAll().stream().map(mapper::toDto).toList();
     }
 
     @Override
     @Transactional(readOnly = true)
     public TaskResponse getTaskById(Long id) {
-        return toResponse(findTask(id));
+        return mapper.toDto(findTask(id));
     }
 
     @Override
     @Transactional
     public TaskResponse updateTask(Long id, UpdateTaskRequest request) {
         Task task = findTask(id);
-        task.setTitle(request.title());
-        task.setDescription(request.description());
-        task.setStatus(request.status());
-        return toResponse(repository.saveAndFlush(task));
+        mapper.updateEntity(request, task);
+        return mapper.toDto(repository.saveAndFlush(task));
     }
 
     @Override
@@ -57,16 +55,5 @@ public class TaskServiceImpl implements TaskService {
 
     private Task findTask(Long id) {
         return repository.findById(id).orElseThrow(() -> new TaskNotFoundException(id));
-    }
-
-    private TaskResponse toResponse(Task task) {
-        return new TaskResponse(
-                task.getId(),
-                task.getTitle(),
-                task.getDescription(),
-                task.getStatus(),
-                task.getCreatedAt(),
-                task.getUpdatedAt()
-        );
     }
 }
