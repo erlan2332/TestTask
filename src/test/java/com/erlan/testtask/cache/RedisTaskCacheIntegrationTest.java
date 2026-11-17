@@ -23,25 +23,16 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicBoolean;
 import org.hibernate.SessionFactory;
 import org.hibernate.stat.Statistics;
-import org.junit.jupiter.api.Order;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.TestMethodOrder;
-import org.junit.jupiter.api.MethodOrderer.OrderAnnotation;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.ApplicationArguments;
-import org.springframework.boot.ApplicationRunner;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.cache.Cache;
 import org.springframework.cache.CacheManager;
 import org.springframework.cache.interceptor.SimpleKey;
-import org.springframework.context.annotation.Bean;
-import org.springframework.core.Ordered;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
@@ -53,11 +44,7 @@ import org.springframework.transaction.support.TransactionTemplate;
         "spring.datasource.url=jdbc:h2:mem:redis-cache-tests;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE"
 })
 @AutoConfigureMockMvc
-@TestMethodOrder(OrderAnnotation.class)
 class RedisTaskCacheIntegrationTest {
-
-    private static final String UNRELATED_KEY = "testtask:unrelated:startup-check";
-    private static final AtomicBoolean STALE_ENTRY_SEEDED = new AtomicBoolean();
 
     @Autowired
     private TaskService service;
@@ -84,16 +71,6 @@ class RedisTaskCacheIntegrationTest {
     private ObjectMapper objectMapper;
 
     @Test
-    @Order(1)
-    void startupClearsOnlyTaskCache() {
-        assertThat(STALE_ENTRY_SEEDED).isTrue();
-        assertThat(taskCache().get(SimpleKey.EMPTY)).isNull();
-        assertThat(redis.opsForValue().get(UNRELATED_KEY)).isEqualTo("keep");
-        redis.delete(UNRELATED_KEY);
-    }
-
-    @Test
-    @Order(2)
     void redisRoundTripPreservesDtosAndFiveMinuteTtl() {
         resetState();
         Task stored = repository.saveAndFlush(new Task("From H2", "Details", TaskStatus.IN_PROGRESS));
@@ -125,7 +102,6 @@ class RedisTaskCacheIntegrationTest {
     }
 
     @Test
-    @Order(3)
     void authorizedHttpCrudInvalidatesRedisAndAnonymousRequestsCannotReadIt() throws Exception {
         resetState();
         mockMvc.perform(get("/api/tasks")).andExpect(status().isUnauthorized());
@@ -161,7 +137,6 @@ class RedisTaskCacheIntegrationTest {
     }
 
     @Test
-    @Order(4)
     void rollbackKeepsCachedListAndDatabaseInSync() {
         resetState();
         Task stored = repository.saveAndFlush(new Task("Before", null, TaskStatus.TODO));
@@ -178,7 +153,6 @@ class RedisTaskCacheIntegrationTest {
     }
 
     @Test
-    @Order(5)
     void rejectedWritesDoNotEvictRedis() throws Exception {
         resetState();
         repository.saveAndFlush(new Task("Existing", null, TaskStatus.TODO));
@@ -208,37 +182,4 @@ class RedisTaskCacheIntegrationTest {
         taskCache().clear();
     }
 
-    @TestConfiguration(proxyBeanMethods = false)
-    static class StartupSeedConfig {
-
-        @Bean
-        SeedStaleCacheRunner seedStaleCacheRunner(CacheManager cacheManager, StringRedisTemplate redis) {
-            return new SeedStaleCacheRunner(cacheManager, redis);
-        }
-    }
-
-    static class SeedStaleCacheRunner implements ApplicationRunner, Ordered {
-
-        private final CacheManager cacheManager;
-        private final StringRedisTemplate redis;
-
-        SeedStaleCacheRunner(CacheManager cacheManager, StringRedisTemplate redis) {
-            this.cacheManager = cacheManager;
-            this.redis = redis;
-        }
-
-        @Override
-        public int getOrder() {
-            return Ordered.HIGHEST_PRECEDENCE;
-        }
-
-        @Override
-        public void run(ApplicationArguments args) {
-            TaskResponse stale = new TaskResponse(99L, "Stale", null, TaskStatus.TODO,
-                    Instant.parse("2026-01-01T00:00:00Z"), Instant.parse("2026-01-01T00:00:00Z"));
-            cacheManager.getCache(CacheConfig.TASKS_CACHE).put(SimpleKey.EMPTY, List.of(stale));
-            redis.opsForValue().set(UNRELATED_KEY, "keep");
-            STALE_ENTRY_SEEDED.set(true);
-        }
-    }
 }

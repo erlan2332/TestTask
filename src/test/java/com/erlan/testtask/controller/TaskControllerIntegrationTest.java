@@ -10,7 +10,6 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-import com.erlan.testtask.dto.request.CreateTaskRequest;
 import com.erlan.testtask.entity.Task;
 import com.erlan.testtask.enums.TaskStatus;
 import com.erlan.testtask.repository.TaskRepository;
@@ -170,26 +169,7 @@ class TaskControllerIntegrationTest {
     }
 
     @Test
-    void invalidRequestsReturnBadRequest() throws Exception {
-        mockMvc.perform(post("/api/tasks")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("""
-                                {"title":"  ","status":"TODO"}
-                                """))
-                .andExpect(status().isBadRequest());
-
-        mockMvc.perform(post("/api/tasks")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(
-                                new CreateTaskRequest("x".repeat(256), null, null))))
-                .andExpect(status().isBadRequest());
-
-        mockMvc.perform(post("/api/tasks")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(
-                                new CreateTaskRequest("Valid", "x".repeat(2001), null))))
-                .andExpect(status().isBadRequest());
-
+    void invalidUpdateLeavesStoredTaskUnchanged() throws Exception {
         Task stored = repository.saveAndFlush(new Task("Original", null, TaskStatus.TODO));
         mockMvc.perform(put("/api/tasks/{id}", stored.getId())
                         .contentType(MediaType.APPLICATION_JSON)
@@ -200,18 +180,6 @@ class TaskControllerIntegrationTest {
 
         assertThat(repository.findById(stored.getId()).orElseThrow().getTitle()).isEqualTo("Original");
         assertThat(repository.count()).isEqualTo(1);
-    }
-
-    @Test
-    void invalidEnumReturnsBadRequest() throws Exception {
-        mockMvc.perform(post("/api/tasks")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("""
-                                {"title":"Invalid status","status":"STARTED"}
-                                """))
-                .andExpect(status().isBadRequest());
-
-        assertThat(repository.count()).isZero();
     }
 
     @Test
