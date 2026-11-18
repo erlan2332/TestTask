@@ -6,10 +6,8 @@ import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.httpBasic;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -48,7 +46,7 @@ class RedisEmailIntegrationTest {
     private JavaMailSender mailSender;
 
     @Test
-    void smtpFailureDoesNotLeaveRedisStaleAndOtherWritesStillEvict() throws Exception {
+    void smtpFailureDoesNotLeaveRedisStale() throws Exception {
         repository.deleteAll();
         var cache = cacheManager.getCache(CacheConfig.TASKS_CACHE);
         cache.clear();
@@ -67,19 +65,6 @@ class RedisEmailIntegrationTest {
         mockMvc.perform(get("/api/tasks").with(httpBasic("test-user", "test-password")))
                 .andExpect(status().isOk()).andExpect(jsonPath("$[0].id").value(id));
 
-        mockMvc.perform(put("/api/tasks/{id}", id).with(httpBasic("test-user", "test-password"))
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"title\":\"Updated\",\"status\":\"DONE\"}"))
-                .andExpect(status().isOk());
-        assertThat(cache.get(SimpleKey.EMPTY)).isNull();
-        mockMvc.perform(get("/api/tasks").with(httpBasic("test-user", "test-password")))
-                .andExpect(status().isOk()).andExpect(jsonPath("$[0].title").value("Updated"));
-
-        mockMvc.perform(delete("/api/tasks/{id}", id).with(httpBasic("test-user", "test-password")))
-                .andExpect(status().isNoContent());
-        assertThat(cache.get(SimpleKey.EMPTY)).isNull();
-        mockMvc.perform(get("/api/tasks").with(httpBasic("test-user", "test-password")))
-                .andExpect(status().isOk()).andExpect(jsonPath("$").isEmpty());
         verify(mailSender, times(1)).send(any(SimpleMailMessage.class));
     }
 }

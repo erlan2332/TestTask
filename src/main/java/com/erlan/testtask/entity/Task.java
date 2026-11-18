@@ -40,7 +40,7 @@ public class Task {
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false, length = 20)
     @Setter
-    private TaskStatus status = TaskStatus.TODO;
+    private TaskStatus status;
 
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;

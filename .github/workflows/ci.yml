@@ -49,3 +49,5 @@ jobs:
           assert int(report.attrib['errors']) == 0
           print(f'Redis integration tests passed: {tests}')
           PY
+      - name: Build Docker image
+        run: docker build -t testtask:ci .

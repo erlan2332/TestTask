@@ -1,0 +1,32 @@
+services:
+  app:
+    build: .
+    ports:
+      - "127.0.0.1:8080:8080"
+    env_file:
+      - .env
+    environment:
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      MAIL_HOST: mailpit
+      MAIL_PORT: "1025"
+      MAIL_SMTP_AUTH: "false"
+      MAIL_SMTP_STARTTLS: "false"
+    depends_on:
+      redis:
+        condition: service_healthy
+      mailpit:
+        condition: service_started
+
+  redis:
+    image: redis:7-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  mailpit:
+    image: axllent/mailpit:v1.33.1
+    ports:
+      - "127.0.0.1:${MAILPIT_UI_PORT:-8026}:8025"
