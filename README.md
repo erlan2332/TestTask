@@ -72,5 +72,3 @@ docker compose up --build -d
 # Для Redis-интеграционных тестов нужен Redis на localhost:6379:
 RUN_REDIS_TESTS=true ./gradlew clean build
 ```
-
-Проверено на Java 21: 66 тестов, в том числе 6 Redis-интеграционных, без ошибок и пропусков; Docker build и публичные HTTP-запросы также прошли успешно.
