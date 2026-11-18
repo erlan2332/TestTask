@@ -70,3 +70,42 @@ jobs:
           PY
       - name: Build Docker image
         run: docker build -t testtask:ci .
+
+  deploy:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/task-dev'
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Render deployment of tested commit
+        env:
+          RENDER_DEPLOY_HOOK_URL: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          import sys
+          from urllib.error import HTTPError, URLError
+          from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
+          from urllib.request import Request, urlopen
+
+          hook = os.environ.get('RENDER_DEPLOY_HOOK_URL', '')
+          if not hook:
+              sys.exit('RENDER_DEPLOY_HOOK_URL secret is missing')
+          parts = urlsplit(hook)
+          query = dict(parse_qsl(parts.query))
+          query['ref'] = os.environ['GITHUB_SHA']
+          url = urlunsplit(parts._replace(query=urlencode(query)))
+          try:
+              with urlopen(Request(url, method='POST'), timeout=30) as response:
+                  status = response.status
+                  result = json.load(response) if status == 200 else {}
+          except HTTPError as error:
+              sys.exit(f'Render deploy hook returned HTTP {error.code}')
+          except URLError as error:
+              sys.exit(f'Render deploy hook is unreachable: {error.reason}')
+          if status not in (200, 202):
+              sys.exit(f'Render deploy hook returned HTTP {status}')
+          print(f'Render deploy hook accepted tested commit ({status})')
+          if result.get('deploy', {}).get('id'):
+              print(f"Deploy ID: {result['deploy']['id']}")
+          PY
