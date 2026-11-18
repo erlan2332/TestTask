@@ -12,7 +12,9 @@ REST API для управления задачами на Java 21 и Spring Boo
 | HTTP-логи | [Better Stack: TestTask Render](https://telemetry.betterstack.com/team/t637360/tail?s=l2841670) |
 | CI/CD | [GitHub Actions](https://github.com/erlan2332/TestTask/actions/workflows/ci.yml) |
 
-Бизнес-эндпоинты защищены HTTP Basic. Для проверки в Swagger нажмите **Authorize** и введите учётные данные, выданные владельцем проекта. Без них API возвращает `401`. Swagger и OpenAPI доступны без авторизации. Ссылка на логи требует входа в Better Stack и доступа к команде проекта; доступ проверяющему выдаёт владелец. Бесплатный Render может «засыпать», поэтому первый запрос иногда выполняется дольше.
+Бизнес-эндпоинты защищены HTTP Basic. Для проверки в Swagger нажмите **Authorize** и введите учётные данные, выданные владельцем проекта. Без них API возвращает `401`. Swagger и OpenAPI доступны без авторизации. Бесплатный Render может «засыпать», поэтому первый запрос иногда выполняется дольше.
+
+Для просмотра логов откройте [вход Better Stack по паролю](https://betterstack.com/users/sign-in?tab=password&return_to=https%3A%2F%2Ftelemetry.betterstack.com%2Fteam%2Ft637360%2Ftail%3Fs%3Dl2841670), введите общий email и пароль, полученные у владельца. Если открылся вход по письму, нажмите **Sign in using password**. Доступ к почте проверяющему не нужен; после входа откроются логи TestTask.
 
 ## Выполнение тестового задания
 
