@@ -16,6 +16,8 @@ import java.io.IOException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.boot.test.system.CapturedOutput;
 import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.http.HttpMethod;
@@ -40,17 +42,21 @@ class ExternalApiServiceImplTest {
     }
 
     @Test
-    void getsJsonFromConfiguredUrlAndLogsActualResponse(CapturedOutput output) {
-        String json = "[{\"id\":\"1\",\"name\":\"Pixel\",\"data\":{\"capacity\":\"128 GB\"}}]";
+    void returnsOriginalJsonAndLogsItOnce(CapturedOutput output) {
+        String json = "[{\"id\":\"1\",\"name\":\"Pixel\",\"data\":{\"capacity\":\"128 GB\"}},"
+                + "{\"id\":\"2\",\"name\":\"Empty\",\"data\":null}]";
         server.expect(requestTo(URL)).andExpect(method(HttpMethod.GET))
                 .andRespond(withSuccess(json, MediaType.APPLICATION_JSON));
 
         JsonNode result = service.getObjects();
 
-        assertThat(result.isArray()).isTrue();
-        assertThat(result.get(0).path("name").asText()).isEqualTo("Pixel");
         assertThat(result.get(0).path("data").path("capacity").asText()).isEqualTo("128 GB");
-        assertThat(output.getOut()).contains("EXTERNAL API | GET restful-api.dev/objects | status=200 | response=" + json);
+        assertThat(result.get(1).path("data").isNull()).isTrue();
+        String log = output.getOut().lines().filter(line -> line.contains("EXTERNAL API | GET"))
+                .findFirst().orElseThrow();
+        assertThat(log).contains("EXTERNAL API | GET " + URL + " | status=200 | response=" + json)
+                .doesNotContain("[REDACTED]", "omittedItems");
+        assertThat(output.getOut().lines().filter(line -> line.contains("EXTERNAL API | GET")).count()).isEqualTo(1);
         server.verify();
     }
 
@@ -84,9 +90,10 @@ class ExternalApiServiceImplTest {
         server.verify();
     }
 
-    @Test
-    void rejectsEmptyResponse() {
-        server.expect(requestTo(URL)).andRespond(withSuccess("", MediaType.APPLICATION_JSON));
+    @ParameterizedTest
+    @ValueSource(strings = {"", "[{", "{\"id\":\"1\"}", "[1,2]"})
+    void rejectsInvalidJsonResponses(String body) {
+        server.expect(requestTo(URL)).andRespond(withSuccess(body, MediaType.APPLICATION_JSON));
 
         assertThatThrownBy(service::getObjects).isInstanceOf(ExternalServiceException.class)
                 .hasMessage("External service returned invalid data");
@@ -94,41 +101,17 @@ class ExternalApiServiceImplTest {
     }
 
     @Test
-    void rejectsMalformedJson() {
-        server.expect(requestTo(URL)).andRespond(withSuccess("[{", MediaType.APPLICATION_JSON));
-
-        assertThatThrownBy(service::getObjects).isInstanceOf(ExternalServiceException.class)
-                .hasMessage("External service returned invalid data");
-        server.verify();
-    }
-
-    @Test
-    void rejectsUnexpectedJsonStructure() {
-        server.expect(requestTo(URL)).andRespond(withSuccess("{\"id\":\"1\"}", MediaType.APPLICATION_JSON));
-
-        assertThatThrownBy(service::getObjects).isInstanceOf(ExternalServiceException.class)
-                .hasMessage("External service returned invalid data");
-        server.verify();
-    }
-
-    @Test
-    void rejectsArrayWithoutObjects() {
-        server.expect(requestTo(URL)).andRespond(withSuccess("[1, 2]", MediaType.APPLICATION_JSON));
-
-        assertThatThrownBy(service::getObjects).isInstanceOf(ExternalServiceException.class)
-                .hasMessage("External service returned invalid data");
-        server.verify();
-    }
-
-    @Test
-    void truncatesLargeLoggedResponseButReturnsFullJson(CapturedOutput output) {
-        String json = "[{\"name\":\"" + "x".repeat(5000) + "\"}]";
+    void oversizedResponseIsReturnedWholeAndLogIsMarkedTruncated(CapturedOutput output) {
+        String json = "[{\"id\":\"1\",\"name\":\"" + "x".repeat(70_000) + "\",\"data\":null}]";
         server.expect(requestTo(URL)).andRespond(withSuccess(json, MediaType.APPLICATION_JSON));
 
         JsonNode result = service.getObjects();
 
-        assertThat(result.get(0).path("name").asText()).hasSize(5000);
-        assertThat(output.getOut()).contains("...[truncated]").doesNotContain("x".repeat(5000));
+        assertThat(result.get(0).path("name").asText()).hasSize(70_000);
+        String log = output.getOut().lines().filter(line -> line.contains("EXTERNAL API | GET"))
+                .findFirst().orElseThrow();
+        assertThat(log).contains("status=200 | response=[{\"id\":\"1\",\"name\":\"", "... [truncated]")
+                .doesNotContain("x".repeat(70_000), "omittedItems", "[REDACTED]");
         server.verify();
     }
 }

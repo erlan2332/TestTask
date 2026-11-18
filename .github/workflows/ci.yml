@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [task-dev]
+    branches: [task-dev, refactor/post-stage8-audit]
   pull_request:
     branches: [task-dev]
 
@@ -41,13 +41,18 @@ jobs:
           python3 - <<'PY'
           import xml.etree.ElementTree as ET
 
-          report = ET.parse('build/test-results/test/TEST-com.erlan.testtask.cache.RedisTaskCacheIntegrationTest.xml').getroot()
-          tests = int(report.attrib['tests'])
-          assert tests > 0
-          assert int(report.attrib['skipped']) == 0
-          assert int(report.attrib['failures']) == 0
-          assert int(report.attrib['errors']) == 0
-          print(f'Redis integration tests passed: {tests}')
+          for test_class in (
+              'com.erlan.testtask.cache.RedisTaskCacheIntegrationTest',
+              'com.erlan.testtask.cache.RedisStartupCacheIntegrationTest',
+              'com.erlan.testtask.email.RedisEmailIntegrationTest',
+          ):
+              report = ET.parse(f'build/test-results/test/TEST-{test_class}.xml').getroot()
+              tests = int(report.attrib['tests'])
+              assert tests > 0, test_class
+              assert int(report.attrib['skipped']) == 0, test_class
+              assert int(report.attrib['failures']) == 0, test_class
+              assert int(report.attrib['errors']) == 0, test_class
+              print(f'{test_class}: {tests} passed')
           PY
       - name: Build Docker image
         run: docker build -t testtask:ci .

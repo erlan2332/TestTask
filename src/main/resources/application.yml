@@ -1,5 +1,24 @@
 server:
-  port: 8080
+  port: ${PORT:8080}
+  forward-headers-strategy: framework
+
+logging:
+  level:
+    org.zalando.logbook.Logbook: TRACE
+
+logbook:
+  secure-filter:
+    enabled: false
+  format:
+    style: json
+  obfuscate:
+    json-body-fields:
+      - password
+      - access_token
+      - refresh_token
+      - token
+      - apiKey
+      - client_secret
 
 spring:
   mail:
