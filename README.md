@@ -10,17 +10,19 @@ Java 21, Spring Boot 3.5.16, Gradle 8.14.3, Spring Web MVC, Spring Data JPA, H2,
 
 ## Реализованные требования
 
-| Тип | Требование | Реализация |
+| Тип | Требование | Статус по коду |
 |---|---|---|
-| Обязательное | CRUD задач | `POST`, `GET`, `PUT`, `DELETE` в `/api/tasks` |
-| Обязательное | Хранение задач | H2 in-memory и JPA |
-| Обязательное | Отправка созданной задачи на email | Spring Mail после коммита транзакции |
-| Дополнительное | Обработка ошибок | Единый JSON-ответ для ошибок API |
-| Дополнительное | Логирование HTTP | Метод, путь, статус, длительность; чувствительные поля скрыты |
-| Дополнительное | Внешний REST API | `GET /api/external/objects` |
-| Дополнительное | Авторизация | HTTP Basic для всех маршрутов API |
-| Дополнительное | Кэш списка задач | Redis, TTL 5 минут, инвалидация после изменений |
-| Дополнительное | Контейнеризация | Dockerfile и Compose для приложения, Redis и Mailpit |
+| Обязательное | CRUD API — пять операций | Выполнено |
+| Обязательное | H2 Database | Выполнено |
+| Обязательное | Логирование запросов и ответов | Выполнено |
+| Дополнительное +1 | GET на внешний API с логированием ответа | Выполнено |
+| Дополнительное +1 | Unit-тесты CRUD в сервисе | Выполнено |
+| Дополнительное +1 | Email созданных задач | Выполнено |
+| Дополнительное +1 | Basic Authentication | Выполнено |
+| Дополнительное +1 | Redis-кэширование списка | Выполнено |
+| Дополнительное +1 | Dockerfile | Выполнено |
+
+Единый формат ошибок и Docker Compose также реализованы как улучшения проекта сверх перечисленных пунктов.
 
 ## Архитектура
 
@@ -104,12 +106,12 @@ curl -i -u "$APP_SECURITY_USERNAME" http://localhost:8080/api/external/objects
 
 ## Запуск без Docker
 
-Нужны JDK 21 и локальные Redis (`localhost:6379`) и Mailpit SMTP (`localhost:1025`, UI `localhost:8025`). Их можно запустить отдельными контейнерами. Если контейнеры уже созданы, используйте `docker start` с соответствующим именем вместо нового `docker run`.
+Нужны Java 21 в `PATH` и локальные Redis (`localhost:6379`) и Mailpit SMTP (`localhost:1025`, UI `localhost:8025`). Их можно запустить отдельными контейнерами. Если контейнеры уже созданы, используйте `docker start` с соответствующим именем вместо нового `docker run`.
 
 ```bash
-export JAVA_HOME=/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home
+java -version # должна выводиться версия 21
 docker run -d --name testtask-redis -p 127.0.0.1:6379:6379 redis:7-alpine
-docker run -d --name testtask-mailpit -p 127.0.0.1:1025:1025 -p 127.0.0.1:8025:8025 axllent/mailpit
+docker run -d --name testtask-mailpit -p 127.0.0.1:1025:1025 -p 127.0.0.1:8025:8025 axllent/mailpit:v1.33.1
 cp .env.example .env
 # Замените APP_SECURITY_USERNAME и APP_SECURITY_PASSWORD в .env.
 set -a
@@ -118,7 +120,7 @@ set +a
 ./gradlew bootRun
 ```
 
-`./gradlew bootRun` сам по себе не загружает `.env`. При запуске без Docker `REDIS_HOST=localhost` и `MAIL_HOST=localhost`; переменные `MAILPIT_UI_PORT` приложением не используются. На другой ОС укажите свой путь к JDK 21.
+`./gradlew bootRun` сам по себе не загружает `.env`. При запуске без Docker `REDIS_HOST=localhost` и `MAIL_HOST=localhost`; переменные `MAILPIT_UI_PORT` приложением не используются. Если на macOS Java 21 установлена через Homebrew, при необходимости задайте `JAVA_HOME=/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home`.
 
 ## Тестирование
 
@@ -132,7 +134,7 @@ docker compose config > /dev/null
 
 `build` уже запускает тесты. Обычные тесты используют локальный кэш и подменённый почтовый отправитель, поэтому реальный Redis и SMTP им не нужны. Для набора `RUN_REDIS_TESTS=true` нужен Redis на `localhost:6379`; эти тесты проверяют TTL, инвалидацию, откат и взаимодействие с email. GitHub Actions запускает Redis service, Gradle build и проверку запуска Redis-тестов, затем собирает Docker image. CI не требует настоящего SMTP и не публикует образ.
 
-HTTP-логи содержат метод, путь, статус и длительность. Значения названия и описания, заголовок Authorization, cookie и SMTP credentials в них не записываются.
+HTTP-логи содержат метод, путь, статус и длительность. Для `/api/tasks` JSON-тела очищаются от произвольных значений перед записью; захват тела ограничен 8192 байтами, а запись — 4096 символами. Крупный ответ передаётся клиенту без полного буферизования фильтром. Значения названия и описания, заголовок Authorization, cookie и SMTP credentials в логи не попадают.
 
 ## Ограничения
 

@@ -16,6 +16,7 @@ import com.erlan.testtask.enums.TaskStatus;
 import com.erlan.testtask.exception.GlobalExceptionHandler;
 import com.erlan.testtask.exception.TaskNotFoundException;
 import com.erlan.testtask.logging.HttpLoggingFilter;
+import com.erlan.testtask.logging.HttpBodySanitizer;
 import com.erlan.testtask.service.TaskService;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -37,7 +38,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 
 @WebMvcTest(TaskController.class)
-@Import({GlobalExceptionHandler.class, HttpLoggingFilter.class, SecurityConfig.class})
+@Import({GlobalExceptionHandler.class, HttpLoggingFilter.class, HttpBodySanitizer.class, SecurityConfig.class})
 @ExtendWith(OutputCaptureExtension.class)
 @WithMockUser(username = "test-user")
 class TaskErrorAndLoggingTest {

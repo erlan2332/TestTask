@@ -10,6 +10,7 @@ import com.erlan.testtask.exception.ExternalServiceException;
 import com.erlan.testtask.config.SecurityConfig;
 import com.erlan.testtask.exception.GlobalExceptionHandler;
 import com.erlan.testtask.logging.HttpLoggingFilter;
+import com.erlan.testtask.logging.HttpBodySanitizer;
 import com.erlan.testtask.service.ExternalApiService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
@@ -25,7 +26,7 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 @WebMvcTest(ExternalApiController.class)
-@Import({GlobalExceptionHandler.class, HttpLoggingFilter.class, SecurityConfig.class})
+@Import({GlobalExceptionHandler.class, HttpLoggingFilter.class, HttpBodySanitizer.class, SecurityConfig.class})
 @ExtendWith(OutputCaptureExtension.class)
 @WithMockUser(username = "test-user")
 class ExternalApiControllerTest {

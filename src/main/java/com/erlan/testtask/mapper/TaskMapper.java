@@ -4,15 +4,13 @@ import com.erlan.testtask.dto.request.CreateTaskRequest;
 import com.erlan.testtask.dto.request.UpdateTaskRequest;
 import com.erlan.testtask.dto.response.TaskResponse;
 import com.erlan.testtask.entity.Task;
-import com.erlan.testtask.enums.TaskStatus;
 import org.springframework.stereotype.Component;
 
 @Component
 public class TaskMapper {
 
     public Task toEntity(CreateTaskRequest request) {
-        TaskStatus status = request.getStatus() == null ? TaskStatus.TODO : request.getStatus();
-        return new Task(request.getTitle(), request.getDescription(), status);
+        return new Task(request.getTitle(), request.getDescription(), request.getStatus());
     }
 
     public TaskResponse toDto(Task task) {
