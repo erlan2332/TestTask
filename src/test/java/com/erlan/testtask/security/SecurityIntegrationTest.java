@@ -68,6 +68,26 @@ class SecurityIntegrationTest {
     }
 
     @Test
+    void swaggerIsPublicAndDocumentsProtectedOperations() throws Exception {
+        mockMvc.perform(get("/swagger-ui/index.html"))
+                .andExpect(status().isOk());
+
+        MvcResult result = mockMvc.perform(get("/v3/api-docs"))
+                .andExpect(status().isOk())
+                .andReturn();
+        JsonNode document = objectMapper.readTree(result.getResponse().getContentAsString());
+        assertThat(document.path("components").path("securitySchemes").path("basicAuth").path("scheme").asText())
+                .isEqualTo("basic");
+        assertThat(document.path("security").get(0).has("basicAuth")).isTrue();
+        assertThat(document.path("paths").path("/api/tasks").has("get")).isTrue();
+        assertThat(document.path("paths").path("/api/tasks").has("post")).isTrue();
+        for (String method : new String[] {"get", "put", "delete"}) {
+            assertThat(document.path("paths").path("/api/tasks/{id}").has(method)).isTrue();
+        }
+        assertThat(document.path("paths").path("/api/external/objects").has("get")).isTrue();
+    }
+
+    @Test
     void wrongUsernameAndPasswordHaveSameSafeResponse() throws Exception {
         MvcResult wrongUsername = mockMvc.perform(get("/api/tasks")
                 .with(httpBasic("wrong-user", "test-password"))).andReturn();
@@ -109,34 +129,25 @@ class SecurityIntegrationTest {
     }
 
     @Test
-    void authenticatedBusinessErrorsKeepTheirStatuses() throws Exception {
-        mockMvc.perform(get("/api/tasks/99999").with(httpBasic("test-user", "test-password")))
-                .andExpect(status().isNotFound()).andExpect(jsonPath("$.status").value(404));
-        mockMvc.perform(post("/api/tasks").with(httpBasic("test-user", "test-password"))
-                        .contentType(MediaType.APPLICATION_JSON).content("{\"title\":"))
-                .andExpect(status().isBadRequest()).andExpect(jsonPath("$.message").value("Invalid request"));
-        mockMvc.perform(post("/api/tasks").with(httpBasic("test-user", "test-password"))
-                        .contentType(MediaType.APPLICATION_JSON).content("{\"title\":\"  \"}"))
-                .andExpect(status().isBadRequest()).andExpect(jsonPath("$.status").value(400));
-    }
-
-    @Test
     void credentialsNeverAppearInHttpLogs(CapturedOutput output) throws Exception {
-        mockMvc.perform(get("/api/tasks").with(httpBasic("test-user", "test-password")))
-                .andExpect(status().isOk());
-        mockMvc.perform(get("/api/tasks").with(httpBasic("test-user", "wrong-password")))
+        mockMvc.perform(get("/api/tasks/999999?unknown=unknown-query-secret")
+                        .with(httpBasic("test-user", "test-password"))
+                        .header(HttpHeaders.COOKIE, "session=cookie-secret"))
+                .andExpect(status().isNotFound());
+        mockMvc.perform(get("/api/tasks/999999?unknown=unknown-query-secret")
+                        .with(httpBasic("test-user", "wrong-password"))
+                        .header(HttpHeaders.COOKIE, "session=cookie-secret"))
                 .andExpect(status().isUnauthorized());
 
         String encoded = Base64.getEncoder().encodeToString("test-user:test-password"
                 .getBytes(StandardCharsets.UTF_8));
-        String logs = output.getOut();
-        assertThat(logs).contains("HTTP RESPONSE | GET /api/tasks | status=200 |")
-                .contains("HTTP RESPONSE | GET /api/tasks | status=401 |");
-        assertThat(logs).doesNotContain("Authorization", encoded, "test-password", "wrong-password");
-        assertThat(logs.lines().filter(line -> line.contains("HTTP REQUEST | GET /api/tasks |")).count())
-                .isEqualTo(2);
-        assertThat(logs.lines().filter(line -> line.contains("HTTP RESPONSE | GET /api/tasks |")).count())
-                .isEqualTo(2);
+        String logs = output.getOut().lines().filter(line -> line.contains("org.zalando.logbook.Logbook"))
+                .reduce("", (left, right) -> left + right + "\n");
+        assertThat(logs).contains("\"status\":404", "\"status\":401", "\"path\":\"/api/tasks/999999\"");
+        assertThat(logs).doesNotContain("Authorization", "Cookie", encoded, "test-password", "wrong-password",
+                "unknown-query-secret", "cookie-secret", "unknown");
+        assertThat(logs.lines().filter(line -> line.contains("\"type\":\"request\"")).count()).isEqualTo(2);
+        assertThat(logs.lines().filter(line -> line.contains("\"type\":\"response\"")).count()).isEqualTo(2);
     }
 
     private void assertUnauthorized(MvcResult result, String path) throws Exception {

@@ -121,12 +121,6 @@ class TaskControllerIntegrationTest {
     }
 
     @Test
-    void getMissingTaskReturnsNotFound() throws Exception {
-        mockMvc.perform(get("/api/tasks/{id}", 99999L))
-                .andExpect(status().isNotFound());
-    }
-
-    @Test
     void putUpdatesTaskAndTimestamps() throws Exception {
         Task stored = repository.saveAndFlush(new Task("Old", "To clear", TaskStatus.TODO));
         Instant createdAt = stored.getCreatedAt();

@@ -19,8 +19,8 @@ import org.springframework.web.client.RestClientResponseException;
 @RequiredArgsConstructor
 public class ExternalApiServiceImpl implements ExternalApiService {
 
-    private static final String API_NAME = "restful-api.dev/objects";
-    private static final int MAX_LOG_CHARS = 4096;
+    private static final String API_NAME = "https://api.restful-api.dev/objects";
+    private static final int MAX_LOG_CHARS = 65_536;
 
     private final RestClient restClient;
     private final ObjectMapper objectMapper;
@@ -38,12 +38,13 @@ public class ExternalApiServiceImpl implements ExternalApiService {
             throw new ExternalServiceException("External service unavailable", ex);
         }
 
-        JsonNode objects = parseResponse(response.getBody());
-        String json = objects.toString();
-        String loggedJson = json.length() <= MAX_LOG_CHARS
-                ? json : json.substring(0, MAX_LOG_CHARS) + "...[truncated]";
+        String body = response.getBody();
+        JsonNode objects = parseResponse(body);
+        String loggedBody = body.length() <= MAX_LOG_CHARS
+                ? body
+                : body.substring(0, MAX_LOG_CHARS) + "... [truncated]";
         log.info("EXTERNAL API | GET {} | status={} | response={}",
-                API_NAME, response.getStatusCode().value(), loggedJson);
+                API_NAME, response.getStatusCode().value(), loggedBody);
         return objects;
     }
 
